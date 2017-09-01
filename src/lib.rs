@@ -165,6 +165,7 @@ fn lookup_string(s: String, strings: &mut Vec<String>) -> u32 {
 const ABSTRACTION_FLAG: u32 = 0b01000000_00000000_00000000_00000000;
 const APPLICATION_FLAG: u32 = 0b10000000_00000000_00000000_00000000;
 const MATCH_FLAG: u32 = APPLICATION_FLAG | ABSTRACTION_FLAG;
+const CLEAR_FLAGS: u32 = !MATCH_FLAG;
 
 
 pub fn parse<I: Iterator<Item=Token>>(t: &mut I) -> Vec<u32> { //TODO: make errors recoverable
@@ -258,7 +259,7 @@ pub fn to_canonical_string<F, S: fmt::Display>(lambda: &[u32], string_table: F) 
             },
             ABSTRACTION_FLAG => { //abstraction
                 vec.push(false);
-                string.push_str(&format!("(λ{}.", string_table(next & 0b00111111_11111111_11111111_11111111)))
+                string.push_str(&format!("(λ{}.", string_table(next & CLEAR_FLAGS)))
             },
             _ => { //application
                 vec.push(true);
@@ -270,6 +271,149 @@ pub fn to_canonical_string<F, S: fmt::Display>(lambda: &[u32], string_table: F) 
     }
 
 }
+
+#[derive(Debug)]
+enum Tok {
+    AppAsBody,
+    AppAsApplicand,
+    AppAsArgument,
+    AbsAsBody,
+    AbsAsApplicand,
+    AbsAsArgument,
+    FinishedApplicand
+}
+
+pub fn to_simplified_string<F, S: fmt::Display>(lambda: &[u32], string_table: F) -> String where F: Fn(u32) -> S {
+
+    let next = lambda[0];
+
+    let (mut vec, mut string) = match next & MATCH_FLAG {
+        0 => return format!("{}", string_table(next)),
+        ABSTRACTION_FLAG => (vec![Tok::AbsAsBody], format!("λ{}.", string_table(next & CLEAR_FLAGS))),
+        _ => (vec![Tok::AppAsBody], String::new())
+    };
+
+    let mut start: usize = 1;
+
+
+    loop {
+        let next = lambda[start];
+        let tok = vec.pop().expect("uh oh");
+
+        match next & MATCH_FLAG {
+            0 => {
+                if let Tok::FinishedApplicand = tok {
+                    string.push_str(" ");
+                }
+                string.push_str(&format!("{}", string_table(next)));
+                match tok {
+                    Tok::FinishedApplicand | Tok::AbsAsBody | Tok::AbsAsArgument => {
+                        if let Tok::AbsAsArgument = tok {
+                            string.push_str(")");
+                        }
+                        loop {
+                            if let Some(tok) = vec.pop() {
+                                match tok {
+                                    Tok::AppAsArgument | Tok::AbsAsArgument => string.push_str(")"),
+                                    Tok::AppAsBody |  Tok::AbsAsBody => (),
+                                    Tok::AppAsApplicand => {
+                                        vec.push(Tok::FinishedApplicand);
+                                        break
+                                    },
+                                    Tok::AbsAsApplicand => {
+                                        vec.push(Tok::FinishedApplicand);
+                                        string.push_str(")");
+                                        break
+                                    },
+                                    Tok::FinishedApplicand => panic!("weird")
+                                }
+                            } else {
+                                return string;
+                            }
+                        }
+                    },
+                    Tok::AbsAsApplicand => {
+                        string.push_str(")");
+                        vec.push(tok);
+                        vec.push(Tok::FinishedApplicand);
+                    },
+                    Tok::AppAsBody | Tok::AppAsApplicand | Tok::AppAsArgument => {
+                        vec.push(tok);
+                        vec.push(Tok::FinishedApplicand);
+                    }
+                }
+            },
+            ABSTRACTION_FLAG => {
+                match tok {
+                    Tok::FinishedApplicand => {
+                        string.push_str(&format!(" (λ{}.", string_table(next & CLEAR_FLAGS)));
+                        vec.push(Tok::AbsAsArgument);
+                    },
+                    Tok::AppAsBody | Tok::AppAsApplicand => {
+                        string.push_str(&format!("(λ{}.", string_table(next & CLEAR_FLAGS)));
+                        vec.push(tok);
+                        vec.push(Tok::AbsAsApplicand);
+                    },
+                    Tok::AppAsArgument => {
+                        string.push_str(&format!("λ{}.", string_table(next & CLEAR_FLAGS)));
+                        vec.push(tok);
+                        vec.push(Tok::AbsAsApplicand);
+                    },
+                    Tok::AbsAsArgument | Tok::AbsAsApplicand | Tok::AbsAsBody => {
+                        string.push_str(&format!("λ{}.", string_table(next & CLEAR_FLAGS)));
+                        vec.push(tok);
+                        vec.push(Tok::AbsAsBody);
+                    }
+                }
+            },
+            _ => {
+                match tok {
+                    Tok::AbsAsArgument | Tok::AbsAsApplicand | Tok::AbsAsBody => {
+                        vec.push(tok);
+                        vec.push(Tok::AppAsBody);
+                    },
+                    Tok::AppAsArgument | Tok::AppAsBody | Tok::AppAsApplicand => {
+                        vec.push(tok);
+                        vec.push(Tok::AppAsApplicand);
+                    },
+                    Tok::FinishedApplicand => {
+                        string.push_str(" (");
+                        vec.push(Tok::AppAsArgument);
+                    }
+                }
+            }
+        }
+
+
+        start += 1;
+    }
+    
+}
+
+        //  (l, r) -> {
+		// 			if (isAbstraction(l)) { //left is abstraction type
+		// 				sb.append('(');
+		// 				appendTo(l, sb, map);
+		// 				sb.append(") ");
+		// 			} else {
+		// 				appendTo(l, sb, map);
+		// 				sb.append(' ');
+		// 			}
+		// 			String varName = variableOr(r, null);
+		// 			if (varName != null) { //right is variable type
+		// 				return sb.append(varName);
+		// 			} else {
+		// 				sb.append('(');
+		// 				appendTo(r, sb, map);
+		// 				return sb.append(')');
+		// 			}
+		// 		}, (l, v, b) -> {
+		// 			sb.append(l).append(v).append('.');
+		// 			if (isApplication(b)) {
+		// 				sb.append(' ');
+		// 			}
+		// 			return appendTo(b, sb, map);
+		// 		});
 
 
 pub fn to_hex_string(src: &[u32]) -> String {

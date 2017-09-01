@@ -3,7 +3,7 @@ extern crate lambda;
 use lambda::*;
 
 fn main() {
-    print_info("a b \\e.\\f. g (h i \\j.x y) t (a b (\\a.b))\\k.m");
+    print_info("a b c \\e.\\f. g (h i \\j.x y) t (a b (\\a.b))\\k.m");
     print_info("this is actually a valid lambda expression");
     print_info("the I combinator: \\x.x");
     print_info("the K combinator: \\x.\\y.x");
@@ -11,6 +11,7 @@ fn main() {
     print_info("the Y combinator: \\f.(\\x.f (x x))(\\x. f (x x))");
     print_info("My 'compose' token in action: ∀x.y");
     print_info("same token string without 'compose': ∀ \\x.y");
+    print_info("\\a.\\b. c d e");
 }
 
 fn print_info(lambda: &str) {
@@ -25,11 +26,12 @@ fn print_info(lambda: &str) {
     let output = to_canonical_string(&lisp, |i| &string_table[i as usize]);
 
     println!("");
-    println!("input string:     {}", lambda);
-    println!("syntax tokens:    {}", token_string);
-    println!("string table:     {:?}", string_table);
-    println!("hex output:       {}", u32s_to_hex(&lisp));
-    println!("canonical output: {}", output);
+    println!("input string:      {}", lambda);
+    println!("syntax tokens:     {}", token_string);
+    println!("string table:      {:?}", string_table);
+    println!("hex output:        {}", u32s_to_hex(&lisp));
+    println!("canonical output:  {}", output);
+    println!("simplified output: {}", to_simplified_string(&lisp, |i| &string_table[i as usize]));
     println!("");
 }
 
