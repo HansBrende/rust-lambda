@@ -152,22 +152,19 @@ pub fn string_to_tokens(s: &str, names: &mut Vec<String>) -> Vec<Token> { //TODO
 
 
 fn lookup_string(s: String, strings: &mut Vec<String>) -> u32 {
-    let mut ind = 0u32;
-    {
-        let sref = &s;
-        for string in strings.iter() {
-            if string == sref {
-                return ind;
-            }
-            ind += 1;
-        }
+    if let Some(i) = strings.iter().position(|t| *t == s) {
+        i as u32
+    } else {
+        let size = strings.len() as u32;
+        strings.push(s);
+        size
     }
-    strings.push(s);
-
-    ind
 }
 
 
+const ABSTRACTION_FLAG: u32 = 0b01000000_00000000_00000000_00000000;
+const APPLICATION_FLAG: u32 = 0b10000000_00000000_00000000_00000000;
+const MATCH_FLAG: u32 = APPLICATION_FLAG | ABSTRACTION_FLAG;
 
 
 pub fn parse<I: Iterator<Item=Token>>(t: &mut I) -> Vec<u32> { //TODO: make errors recoverable
@@ -184,35 +181,38 @@ pub fn parse<I: Iterator<Item=Token>>(t: &mut I) -> Vec<u32> { //TODO: make erro
                 let mut y = seconds.pop().expect("uh oh 1");
 
                 let s = seconds.last_mut().expect("uh oh 3");
-                if s.len() != 0 { //seconds is not empty
-                    let f = firsts.last_mut().expect("uh oh 2");
-                    f.push(0xffffffff); 
+                let slen = s.len();
+                if slen != 0 { //seconds is not empty
+                    s.insert(0, slen as u32 | APPLICATION_FLAG);
                 }
                 s.append(&mut x);
                 s.append(&mut y);
             },
             Token::Var(x) => {
                 let s = seconds.last_mut().expect("uh oh 5");
-                if s.len() != 0 { //seconds is not empty
-                    let f = firsts.last_mut().expect("uh oh 4");
-                    f.push(0xffffffff);
+                let slen = s.len();
+                if slen != 0 { //seconds is not empty
+                    s.insert(0, slen as u32 | APPLICATION_FLAG);
                 }
                 s.push(x);
             },
             Token::Abs(x) => {
                 let f = firsts.last_mut().expect("uh oh 6");
                 let s = seconds.last_mut().expect("uh oh 7");
-                if s.len() != 0 { //seconds is not empty
-                    f.push(0xffffffff);
+                let slen = s.len();
+                if slen != 0 { //seconds is not empty
+                    f.push(slen as u32 | APPLICATION_FLAG);
+                    f.append(s);
                 }
-                s.push(x | 0b01000000_00000000_00000000_00000000);
-                f.append(s);
+
+                f.push(x | ABSTRACTION_FLAG);
             },
             Token::Compose => {
                 let s = seconds.last_mut().expect("uh oh 8");
-                if s.len() != 0 { //seconds is not empty
+                let slen = s.len();
+                if slen != 0 { //seconds is not empty
                     let f = firsts.last_mut().expect("uh oh 9");
-                    f.push(0xffffffff);
+                    f.push(slen as u32 | APPLICATION_FLAG);
                     f.append(s);
                 }
             }
@@ -238,30 +238,34 @@ pub fn to_canonical_string<F, S: fmt::Display>(lambda: &[u32], string_table: F) 
 
     loop {
         let next = lambda[start];
-        if next & 0b11000000_00000000_00000000_00000000 == 0 { //variable
-            string.push_str(&format!("{}", string_table(next)));
+        match next & MATCH_FLAG {
+            0 => { //variable
+                string.push_str(&format!("{}", string_table(next)));
 
-            loop {
-                if let Some(b) = vec.pop() {
-                    if b {
-                        vec.push(false);
-                        string.push_str(" ");
-                        break;
+                loop {
+                    if let Some(b) = vec.pop() {
+                        if b {
+                            vec.push(false);
+                            string.push_str(" ");
+                            break;
+                        } else {
+                            string.push_str(")");
+                        }
                     } else {
-                        string.push_str(")");
+                        return string;
                     }
-                } else {
-                    return string;
                 }
+            },
+            ABSTRACTION_FLAG => { //abstraction
+                vec.push(false);
+                string.push_str(&format!("(λ{}.", string_table(next & 0b00111111_11111111_11111111_11111111)))
+            },
+            _ => { //application
+                vec.push(true);
+                string.push_str("(")
             }
-
-        } else if next & 0b10000000_00000000_00000000_00000000 == 0 { //abstraction
-            vec.push(false);
-            string.push_str(&format!("(λ{}.", string_table(next & 0b00111111_11111111_11111111_11111111)))
-        } else { //application
-            vec.push(true);
-            string.push_str("(")
         }
+
         start += 1;
     }
 
