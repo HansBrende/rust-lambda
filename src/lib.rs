@@ -168,16 +168,16 @@ const MATCH_FLAG: u32 = APPLICATION_FLAG | ABSTRACTION_FLAG;
 const CLEAR_FLAGS: u32 = !MATCH_FLAG;
 
 
-pub fn parse<I: Iterator<Item=Token>>(t: &mut I) -> Vec<u32> { //TODO: make errors recoverable
+pub fn parse<'a, I: Iterator<Item=&'a Token>>(t: I) -> Vec<u32> { //TODO: make errors recoverable
     let mut firsts: Vec<Vec<u32>> = vec![Vec::new()];
     let mut seconds: Vec<Vec<u32>> = vec![Vec::new()];
     for token in t {
         match token {
-            Token::OpenParen => {
+            &Token::OpenParen => {
                 firsts.push(Vec::new());
                 seconds.push(Vec::new());
             },
-            Token::CloseParen => {
+            &Token::CloseParen => {
                 let mut x = firsts.pop().expect("uh oh 0");
                 let mut y = seconds.pop().expect("uh oh 1");
 
@@ -189,7 +189,7 @@ pub fn parse<I: Iterator<Item=Token>>(t: &mut I) -> Vec<u32> { //TODO: make erro
                 s.append(&mut x);
                 s.append(&mut y);
             },
-            Token::Var(x) => {
+            &Token::Var(x) => {
                 let s = seconds.last_mut().expect("uh oh 5");
                 let slen = s.len();
                 if slen != 0 { //seconds is not empty
@@ -197,7 +197,7 @@ pub fn parse<I: Iterator<Item=Token>>(t: &mut I) -> Vec<u32> { //TODO: make erro
                 }
                 s.push(x);
             },
-            Token::Abs(x) => {
+            &Token::Abs(x) => {
                 let f = firsts.last_mut().expect("uh oh 6");
                 let s = seconds.last_mut().expect("uh oh 7");
                 let slen = s.len();
@@ -208,7 +208,7 @@ pub fn parse<I: Iterator<Item=Token>>(t: &mut I) -> Vec<u32> { //TODO: make erro
 
                 f.push(x | ABSTRACTION_FLAG);
             },
-            Token::Compose => {
+            &Token::Compose => {
                 let s = seconds.last_mut().expect("uh oh 8");
                 let slen = s.len();
                 if slen != 0 { //seconds is not empty

@@ -19,19 +19,17 @@ fn print_info(lambda: &str) {
 
     let tokens: Vec<Token> = string_to_tokens(lambda, &mut string_table);
 
-    let token_string = format!("{:?}", tokens);
+    let serial: Vec<u32> = parse(tokens.iter());
 
-    let lisp: Vec<u32> = parse(&mut tokens.into_iter());
-
-    let output = to_canonical_string(&lisp, |i| &string_table[i as usize]);
+    let output = to_canonical_string(&serial, |i| &string_table[i as usize]);
 
     println!("");
     println!("input string:      {}", lambda);
-    println!("syntax tokens:     {}", token_string);
+    println!("syntax tokens:     {:?}", tokens);
     println!("string table:      {:?}", string_table);
-    println!("hex output:        {}", u32s_to_hex(&lisp));
+    println!("hex output:        {}", u32s_to_hex(&serial));
     println!("canonical output:  {}", output);
-    println!("simplified output: {}", to_simplified_string(&lisp, |i| &string_table[i as usize]));
+    println!("simplified output: {}", to_simplified_string(&serial, |i| &string_table[i as usize]));
     println!("");
 }
 
