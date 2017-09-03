@@ -16,10 +16,10 @@ pub enum Token {
     Compose
 }
 
-pub fn string_to_tokens(s: &str, names: &mut Vec<String>) -> Vec<Token> { //TODO: make errors recoverable
+pub fn string_to_tokens<I: IntoIterator<Item=char>>(s: I, names: &mut Vec<String>) -> Vec<Token> { //TODO: make errors recoverable
     let mut tokens: Vec<Token> = Vec::new();
 
-    let mut iter = s.chars().into_iter();
+    let mut iter = s.into_iter();
 
     'outer: while let Some(c) = iter.next() {
         if c.is_whitespace() {
@@ -168,7 +168,7 @@ const MATCH_FLAG: u32 = APPLICATION_FLAG | ABSTRACTION_FLAG;
 const CLEAR_FLAGS: u32 = !MATCH_FLAG;
 
 
-pub fn parse<'a, I: Iterator<Item=&'a Token>>(t: I) -> Vec<u32> { //TODO: make errors recoverable
+pub fn parse<'a, I: IntoIterator<Item=&'a Token>>(t: I) -> Vec<u32> { //TODO: make errors recoverable
     let mut firsts: Vec<Vec<u32>> = vec![Vec::new()];
     let mut seconds: Vec<Vec<u32>> = vec![Vec::new()];
     for token in t {
@@ -230,18 +230,15 @@ pub fn parse<'a, I: Iterator<Item=&'a Token>>(t: I) -> Vec<u32> { //TODO: make e
 } 
 
 
-pub fn to_canonical_string<F, S: fmt::Display>(lambda: &[u32], string_table: F) -> String where F: Fn(u32) -> S {
+pub fn to_canonical_string<'a, S: fmt::Display, F: Fn(u32) -> S, I: IntoIterator<Item=&'a u32>>(lambda: I, string_table: F) -> String {
 
-    let mut start: usize = 0;
     let mut string = String::new();
-
     let mut vec: Vec<bool> = Vec::new();
 
-    loop {
-        let next = lambda[start];
+    for next in lambda {
         match next & MATCH_FLAG {
             0 => { //variable
-                string.push_str(&format!("{}", string_table(next)));
+                string.push_str(&format!("{}", string_table(*next)));
 
                 loop {
                     if let Some(b) = vec.pop() {
@@ -267,9 +264,8 @@ pub fn to_canonical_string<F, S: fmt::Display>(lambda: &[u32], string_table: F) 
             }
         }
 
-        start += 1;
     }
-
+    panic!("iterator terminated too early");
 }
 
 #[derive(Debug)]
@@ -283,9 +279,10 @@ enum Tok {
     FinishedApplicand
 }
 
-pub fn to_simplified_string<F, S: fmt::Display>(lambda: &[u32], string_table: F) -> String where F: Fn(u32) -> S {
+pub fn to_simplified_string<'a, S: fmt::Display, F: Fn(u32) -> S, I: IntoIterator<Item=&'a u32>>(lambda: I, string_table: F) -> String {
 
-    let next = lambda[0];
+    let mut iter = lambda.into_iter();
+    let next = *iter.next().expect("iterator ended too soon");
 
     let (mut vec, mut string) = match next & MATCH_FLAG {
         0 => return format!("{}", string_table(next)),
@@ -293,11 +290,8 @@ pub fn to_simplified_string<F, S: fmt::Display>(lambda: &[u32], string_table: F)
         _ => (vec![Tok::AppAsBody], String::new())
     };
 
-    let mut start: usize = 1;
-
-
     loop {
-        let next = lambda[start];
+        let next = *iter.next().expect("iterator ended too soon");
         let tok = vec.pop().expect("uh oh");
 
         match next & MATCH_FLAG {
@@ -384,36 +378,10 @@ pub fn to_simplified_string<F, S: fmt::Display>(lambda: &[u32], string_table: F)
             }
         }
 
-
-        start += 1;
     }
     
 }
 
-        //  (l, r) -> {
-		// 			if (isAbstraction(l)) { //left is abstraction type
-		// 				sb.append('(');
-		// 				appendTo(l, sb, map);
-		// 				sb.append(") ");
-		// 			} else {
-		// 				appendTo(l, sb, map);
-		// 				sb.append(' ');
-		// 			}
-		// 			String varName = variableOr(r, null);
-		// 			if (varName != null) { //right is variable type
-		// 				return sb.append(varName);
-		// 			} else {
-		// 				sb.append('(');
-		// 				appendTo(r, sb, map);
-		// 				return sb.append(')');
-		// 			}
-		// 		}, (l, v, b) -> {
-		// 			sb.append(l).append(v).append('.');
-		// 			if (isApplication(b)) {
-		// 				sb.append(' ');
-		// 			}
-		// 			return appendTo(b, sb, map);
-		// 		});
 
 
 pub fn to_hex_string(src: &[u32]) -> String {

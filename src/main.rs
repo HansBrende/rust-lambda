@@ -17,18 +17,16 @@ fn main() {
 fn print_info(lambda: &str) {
     let mut string_table: Vec<String> = Vec::new();
 
-    let tokens: Vec<Token> = string_to_tokens(lambda, &mut string_table);
+    let tokens: Vec<Token> = string_to_tokens(lambda.chars(), &mut string_table);
 
-    let serial: Vec<u32> = parse(tokens.iter());
-
-    let output = to_canonical_string(&serial, |i| &string_table[i as usize]);
+    let serial: Vec<u32> = parse(&tokens);
 
     println!("");
     println!("input string:      {}", lambda);
     println!("syntax tokens:     {:?}", tokens);
     println!("string table:      {:?}", string_table);
     println!("hex output:        {}", u32s_to_hex(&serial));
-    println!("canonical output:  {}", output);
+    println!("canonical output:  {}", to_canonical_string(&serial, |i| &string_table[i as usize]));
     println!("simplified output: {}", to_simplified_string(&serial, |i| &string_table[i as usize]));
     println!("");
 }
