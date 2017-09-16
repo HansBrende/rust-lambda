@@ -166,6 +166,7 @@ const ABSTRACTION_FLAG: u32 = 0b01000000_00000000_00000000_00000000;
 const APPLICATION_FLAG: u32 = 0b10000000_00000000_00000000_00000000;
 const MATCH_FLAG: u32 = APPLICATION_FLAG | ABSTRACTION_FLAG;
 const CLEAR_FLAGS: u32 = !MATCH_FLAG;
+const CLEAR_APPLICATION_FLAG: u32 = !APPLICATION_FLAG;
 
 
 pub fn parse<'a, I: IntoIterator<Item=&'a Token>>(t: I) -> Vec<u32> { //TODO: make errors recoverable
@@ -380,6 +381,43 @@ pub fn to_simplified_string<'a, S: fmt::Display, F: Fn(u32) -> S, I: IntoIterato
 
     }
     
+}
+
+pub fn is_free(var: u32, lambda: &[u32]) -> bool {
+    let mut indexes_to_check: Vec<usize> = vec![0];
+
+    let param = var | ABSTRACTION_FLAG;
+
+    if param == var {
+        panic!("invalid variable {}", var);
+    }
+
+    while let Some(next_ind) = indexes_to_check.pop() {
+        let next = lambda[next_ind];
+        match next & MATCH_FLAG {
+            0 => { //variable
+                if next == var {
+                    return true;
+                }
+            },
+            ABSTRACTION_FLAG => { //abstraction
+                if next != param {
+                    indexes_to_check.push(next_ind + 1);
+                }
+            },
+            _ => { //application
+                let applicand_index = next_ind + 1;
+                let argument_index = applicand_index + ((next & CLEAR_APPLICATION_FLAG) as usize);
+                if argument_index <= applicand_index {
+                    panic!("invalid application");
+                }
+                indexes_to_check.push(applicand_index);
+                indexes_to_check.push(argument_index);
+            }
+        }
+    }
+
+    false
 }
 
 

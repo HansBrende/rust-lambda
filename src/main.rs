@@ -19,15 +19,19 @@ fn print_info(lambda: &str) {
 
     let tokens: Vec<Token> = string_to_tokens(lambda.chars(), &mut string_table);
 
-    let serial: Vec<u32> = parse(&tokens);
+    let bytecode: Vec<u32> = parse(&tokens);
 
     println!("");
     println!("input string:      {}", lambda);
     println!("syntax tokens:     {:?}", tokens);
     println!("string table:      {:?}", string_table);
-    println!("hex output:        {}", u32s_to_hex(&serial));
-    println!("canonical output:  {}", to_canonical_string(&serial, |i| &string_table[i as usize]));
-    println!("simplified output: {}", to_simplified_string(&serial, |i| &string_table[i as usize]));
+    println!("hex output:        {}", u32s_to_hex(&bytecode));
+    println!("canonical output:  {}", to_canonical_string(&bytecode, |i| &string_table[i as usize]));
+    println!("simplified output: {}", to_simplified_string(&bytecode, |i| &string_table[i as usize]));
+    for (var, string) in string_table.iter().enumerate() {
+        let free = is_free(var as u32, &bytecode);
+        println!("{} is free: {}", string, free);
+    }
     println!("");
 }
 
