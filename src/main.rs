@@ -3,7 +3,7 @@ extern crate lambda;
 use lambda::*;
 
 fn main() {
-    print_info("a b c \\e.\\f. g (h i \\j.x y) t (a b (\\a.b))\\k.m");
+    print_info("a b c \\e.\\f. g (h i \\j.j x y j (\\j'.j')) t (a b (\\a.b))\\k.m");
     print_info("this is actually a valid lambda expression");
     print_info("the I combinator: \\x.x");
     print_info("the K combinator: \\x.\\y.x");
@@ -28,10 +28,15 @@ fn print_info(lambda: &str) {
     println!("hex output:        {}", u32s_to_hex(&bytecode));
     println!("canonical output:  {}", to_canonical_string(&bytecode, |i| &string_table[i as usize]));
     println!("simplified output: {}", to_simplified_string(&bytecode, |i| &string_table[i as usize]));
-    for (var, string) in string_table.iter().enumerate() {
-        let free = is_free(var as u32, &bytecode);
-        println!("{} is free: {}", string, free);
-    }
+
+    let r = replace_strs(&bytecode, "x", "j", &mut string_table);
+
+    println!("[x := j]           {}", to_simplified_string(&r, |i| &string_table[i as usize]));
+
+    let r = replace_strs(&bytecode, "y", "x", &mut string_table);
+
+    println!("[y := x]           {}", to_simplified_string(&r, |i| &string_table[i as usize]));
+
     println!("");
 }
 

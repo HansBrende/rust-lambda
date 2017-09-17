@@ -169,6 +169,12 @@ const CLEAR_FLAGS: u32 = !MATCH_FLAG;
 const CLEAR_APPLICATION_FLAG: u32 = !APPLICATION_FLAG;
 
 
+
+pub fn parse_str(string: &str, string_table: &mut Vec<String>) -> Vec<u32> {
+    let tokens = string_to_tokens(string.chars(), string_table);
+    parse(&tokens)
+}
+
 pub fn parse<'a, I: IntoIterator<Item=&'a Token>>(t: I) -> Vec<u32> { //TODO: make errors recoverable
     let mut firsts: Vec<Vec<u32>> = vec![Vec::new()];
     let mut seconds: Vec<Vec<u32>> = vec![Vec::new()];
@@ -230,6 +236,291 @@ pub fn parse<'a, I: IntoIterator<Item=&'a Token>>(t: I) -> Vec<u32> { //TODO: ma
     f
 } 
 
+
+fn contains(additional_vars: &[u32], lambda: &[u32], start: usize, var: u32) -> bool {
+    if let Some(_) = additional_vars.iter().position(|i| *i == var) {
+        return true;
+    }
+    enum T {
+        Applicand,
+        Argument,
+        Body
+    }
+    let var_as_param = var | ABSTRACTION_FLAG;
+    if var_as_param == var {
+        panic!("invalid variable {}", var);
+    }
+    let mut vec: Vec<T> = Vec::new();
+    let mut index = start;
+    loop {
+        let next = lambda[index];
+        match next & MATCH_FLAG {
+            0 => { //variable
+                if var == next {
+                    return true;
+                }
+                loop {
+                    if let Some(b) = vec.pop() {
+                        if let T::Applicand = b {
+                            vec.push(T::Argument);
+                            break;
+                        }
+                    } else {
+                        return false;
+                    }
+                }
+            },
+            ABSTRACTION_FLAG => {//abstraction
+                if var_as_param == next {
+                    return true;
+                }
+                vec.push(T::Body);
+            },
+            _ => { //application
+                vec.push(T::Applicand);
+            }
+        }
+
+        index += 1;
+    }
+}
+
+fn replace_var_unsafe(lambda: &mut [u32], start: usize, var: u32, replacement: u32) {
+    enum T {
+        Applicand,
+        Argument,
+        Body(bool)
+    }
+    let var_as_param = var | ABSTRACTION_FLAG;
+    let mut vec: Vec<T> = Vec::new();
+    let mut index = start;
+    let mut var_is_bound = false;
+    loop {
+        let next = lambda[index];
+        match next & MATCH_FLAG {
+            0 => { //variable
+                if next == replacement {
+                    panic!("lambda contains variable {}", replacement);
+                }
+                
+                loop {
+                    if let Some(b) = vec.pop() {
+                        if let T::Applicand = b {
+                            vec.push(T::Argument);
+                            break;
+                        }
+                    } else {
+                        if !var_is_bound && next == var {
+                            lambda[index] = replacement;
+                        }
+                        return;
+                    }
+                }
+
+                if var_is_bound {
+                    var_is_bound = false;
+                    for t in vec.iter() {
+                        if let &T::Body(true) = t {
+                            var_is_bound = true;
+                            break;
+                        }
+                    }
+                } else if next == var {
+                    lambda[index] = replacement;
+                }
+            },
+            ABSTRACTION_FLAG => { //abstraction
+                let binds_var = next == var_as_param;
+                vec.push(T::Body(binds_var));
+                var_is_bound |= binds_var;
+            },
+            _ => { //application
+                vec.push(T::Applicand);
+            }
+        }
+
+        index += 1;
+    }
+}
+
+pub fn replace_strs(lambda: &[u32], var: &str, expression: &str, string_table: &mut Vec<String>) -> Vec<u32> {
+    let expression = parse_str(expression, string_table);
+    replace_str(lambda, var, &expression, string_table)
+}
+
+pub fn replace_str(lambda: &[u32], var: &str, expression: &[u32], string_table: &mut Vec<String>) -> Vec<u32> {
+    let var = lookup_string(String::from(var), string_table);
+    replace(lambda, var, expression, string_table)
+}
+
+pub fn replace(lambda: &[u32], var: u32, expression: &[u32], string_table: &mut Vec<String>) -> Vec<u32> {
+    let free_vars = free_variables(expression, (0..(string_table.len() as u32)));
+    let mut lambda = Vec::from(lambda);
+    prepare_for_replace(var, &free_vars, &mut lambda, string_table);
+
+    let mut output: Vec<u32> = Vec::new();
+
+    enum T {
+        Applicand,
+        Argument,
+        Body(bool)
+    }
+    let var_as_param = var | ABSTRACTION_FLAG;
+    let mut vec: Vec<T> = Vec::new();
+    let mut index = 0;
+    let mut var_is_bound = false;
+    loop {
+        let next = lambda[index];
+        match next & MATCH_FLAG {
+            0 => { //variable
+                
+                loop {
+                    if let Some(b) = vec.pop() {
+                        if let T::Applicand = b {
+                            vec.push(T::Argument);
+                            break;
+                        }
+                    } else {
+                        if !var_is_bound && next == var {
+                            output.extend(expression.iter());
+                        } else {
+                            output.push(next);
+                        }
+                        return output;
+                    }
+                }
+
+                if var_is_bound {
+                    var_is_bound = false;
+                    for t in vec.iter() {
+                        if let &T::Body(true) = t {
+                            var_is_bound = true;
+                            break;
+                        }
+                    }
+                    output.push(next);
+                } else if next == var {
+                    output.extend(expression.iter());
+                } else {
+                    output.push(next);
+                }
+            },
+            ABSTRACTION_FLAG => { //abstraction
+                let binds_var = next == var_as_param;
+                vec.push(T::Body(binds_var));
+                var_is_bound |= binds_var;
+                output.push(next);
+            },
+            _ => { //application
+                vec.push(T::Applicand);
+                output.push(next);
+            }
+        }
+
+        index += 1;
+    }
+
+}
+
+
+fn prepare_for_replace(variable_to_replace: u32, free_vars: &[u32], lambda: &mut [u32], string_table: &mut Vec<String>) {
+    let mut indexes_to_check: Vec<usize> = vec![0];
+
+    while let Some(index) = indexes_to_check.pop() {
+        let next = lambda[index];
+        match next & MATCH_FLAG {
+            0 => { //variable
+                //do nothing
+            },
+            ABSTRACTION_FLAG => { //abstraction
+                let var = next & CLEAR_FLAGS;
+                if var == variable_to_replace {
+                    //do nothing
+                } else if !is_free(variable_to_replace, lambda, index + 1) {
+                    //do nothing
+                } else if let Some(_) = free_vars.iter().position(|i| *i == var) {
+                    let next_index = index + 1;
+                    let mut new_name = string_table[var as usize].clone();
+                    new_name.push('\'');
+
+                    let mut new_var = lookup_string(new_name, string_table);
+
+                    while contains(free_vars, lambda, next_index, new_var) {
+                        new_name = string_table[new_var as usize].clone();
+                        new_name.push('\'');
+                        new_var = lookup_string(new_name, string_table);
+                    }
+
+                    lambda[index] = new_var | ABSTRACTION_FLAG;
+                    replace_var_unsafe(lambda, next_index, var, new_var);
+                    indexes_to_check.push(next_index);
+                } else {
+                    indexes_to_check.push(index + 1);
+                    //do nothing
+                }
+            }, 
+            _ => { //application
+                let applicand_index = index + 1;
+                let argument_index = applicand_index + ((next & CLEAR_APPLICATION_FLAG) as usize);
+                if argument_index <= applicand_index {
+                    panic!("invalid application");
+                }
+                indexes_to_check.push(applicand_index);
+                indexes_to_check.push(argument_index);
+            }
+        }
+    }
+}
+
+// pub fn do_something(var: u32, free_vars: &[u32], lambda: &mut [u32]) {
+//     enum T {
+//         Applicand,
+//         Argument,
+//         CheckedBody,
+//         UncheckedBody(usize)
+//     }
+
+//     let mut vec: Vec<T> = Vec::new();
+
+//     for (i, next) in lambda.iter().enumerate() {
+//         match next & MATCH_FLAG {
+//             0 => { //variable
+//                 if next == var {
+//                     //1. get all unchecked bodies
+//                     //2. if needs change of variables, change variables
+//                     //3. replace with checkedbody
+//                     for (j, next_token) in vec.iter().enumerate() {
+//                         if let T::UncheckedBody(index) = next_token {
+//                             let param = lambda[index] & CLEAR_FLAGS;
+//                             if free_vars.iter().contains(param) {
+//                                 let param2 = new_param_that_is_not_contained_inside_abstraction_nor_free_vars;
+//                                 lambda[index] = param2 | ABSTRACTION_FLAG;
+//                                 replace_var_unsafe(lambda, index + 1, param, param2);
+//                             }
+//                             vec[j] = T::CheckedBody;
+//                         }
+//                     }
+//                 }
+//                 loop {
+//                     if let Some(b) = vec.pop() {
+//                         if let T::Applicand = b {
+//                             vec.push(T::Argument);
+//                             break;
+//                         }
+//                     } else {
+//                         return;
+//                     }
+//                 }
+//             },
+//             ABSTRACTION_FLAG => { //abstraction
+//                 vec.push(T::UncheckedBody(i));
+//             },
+//             _ => { //application
+//                 vec.push(T::Applicand);
+//             }
+//         }
+//     }
+// }
 
 pub fn to_canonical_string<'a, S: fmt::Display, F: Fn(u32) -> S, I: IntoIterator<Item=&'a u32>>(lambda: I, string_table: F) -> String {
 
@@ -383,8 +674,8 @@ pub fn to_simplified_string<'a, S: fmt::Display, F: Fn(u32) -> S, I: IntoIterato
     
 }
 
-pub fn is_free(var: u32, lambda: &[u32]) -> bool {
-    let mut indexes_to_check: Vec<usize> = vec![0];
+pub fn is_free(var: u32, lambda: &[u32], start: usize) -> bool {
+    let mut indexes_to_check: Vec<usize> = vec![start];
 
     let param = var | ABSTRACTION_FLAG;
 
@@ -418,6 +709,18 @@ pub fn is_free(var: u32, lambda: &[u32]) -> bool {
     }
 
     false
+}
+
+pub fn free_variables<I: Iterator<Item=u32>> (lambda: &[u32], variables: I) -> Vec<u32> {
+    let mut fvs: Vec<u32> = Vec::new();
+
+    for var in variables {
+        if is_free(var, lambda, 0) {
+            fvs.push(var);
+        }
+    }
+    
+    fvs
 }
 
 
