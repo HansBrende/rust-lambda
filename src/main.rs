@@ -11,7 +11,21 @@ fn main() {
     print_info("the Y combinator: \\f.(\\x.f (x x))(\\x. f (x x))");
     print_info("My 'compose' token in action: ∀x.y");
     print_info("same token string without 'compose': ∀ \\x.y");
-    print_info("\\a.\\b. c d e");
+    print_info("\\a.\\b. c d x");
+
+    let program = "(\\plus. \\3. \\2. plus 3 2) 
+    (\\m.\\n.\\f.\\x.m f (n f x)) 
+    (\\f.\\x.f (f (f x))) 
+    (\\f.\\x.f (f x))";
+
+    let mut string_table: Vec<String> = Vec::new();
+
+    let mut program = parse_str(program, &mut string_table);
+    beta_reduce2(&mut program, &mut string_table);
+
+
+    println!("{}", to_simplified_string(&program, |i| &string_table[i as usize]));
+
 }
 
 fn print_info(lambda: &str) {
@@ -36,6 +50,10 @@ fn print_info(lambda: &str) {
     let r = replace_strs(&bytecode, "y", "x", &mut string_table);
 
     println!("[y := x]           {}", to_simplified_string(&r, |i| &string_table[i as usize]));
+
+    let r = replace_strs(&bytecode, "x", "b e d", &mut string_table);
+
+    println!("[x := b e d]       {}", to_simplified_string(&r, |i| &string_table[i as usize]));
 
     println!("");
 }

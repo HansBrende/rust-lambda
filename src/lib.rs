@@ -343,6 +343,119 @@ fn replace_var_unsafe(lambda: &mut [u32], start: usize, var: u32, replacement: u
     }
 }
 
+pub fn beta_reduce2(lambda: &mut Vec<u32>, string_table: &mut Vec<String>) {
+    'outer: loop {
+        for i in 0..lambda.len() {
+            let next = lambda[i];
+            match next & MATCH_FLAG {
+                0 => {},
+                ABSTRACTION_FLAG => {},
+                _ => { //application
+                    let abs_from = i + 1;
+                    let param = lambda[abs_from];
+                    if (param & MATCH_FLAG) == ABSTRACTION_FLAG {
+                        {
+                            let string_table_copy = string_table.clone();
+                            println!("{}", to_simplified_string(lambda.iter(), |i| &string_table_copy[i as usize]));
+                        }
+                        let body_from = abs_from + 1;
+                        
+                        let body_to = abs_from + ((next & CLEAR_APPLICATION_FLAG) as usize);
+
+                        let argument_to = lambda_to(lambda, i);
+
+                        let mut suffix = Vec::from(&lambda[argument_to..]);
+
+
+                        let replaced = {
+                            let body = &lambda[body_from..body_to];
+                            let argument = &lambda[body_to..argument_to];
+                            replace(body, param & CLEAR_FLAGS, argument, string_table)
+                        };
+
+                        lambda.drain(i..);
+                        lambda.extend(replaced);
+                        lambda.append(&mut suffix);
+
+                        size_applicands(lambda);
+                        continue 'outer;
+                    }
+                }
+            }
+        }
+
+        return;
+    }
+}
+
+pub fn beta_reduce(lambda: &mut Vec<u32>, string_table: &mut Vec<String>) {
+    loop {
+        match lambda[0] & MATCH_FLAG {
+            0 => { //variable
+                return
+            },
+            ABSTRACTION_FLAG => {
+                return
+            },
+            _ => { //application
+                let mut last_application_size = lambda.len();
+                let mut last_application: usize = 0;
+                let mut applicand_size = (lambda[last_application] & CLEAR_APPLICATION_FLAG) as usize;
+
+                let mut next_ind = last_application + 1;
+
+                loop {
+                    {
+                        let string_table_copy = string_table.clone();
+                        println!("{}", to_simplified_string(lambda.iter(), |i| &string_table_copy[i as usize]));
+                    }
+                    let next = lambda[next_ind];
+                    match next & MATCH_FLAG {
+                        0 => {
+                            return
+                        },
+                        ABSTRACTION_FLAG => {
+                            let body_from = next_ind + 1;
+                            let body_to = next_ind + applicand_size;
+                            let argument_to = last_application + last_application_size;
+                            
+                            let var = lambda[next_ind] & CLEAR_FLAGS;
+
+                            
+                            let mut suffix = Vec::from(&lambda[argument_to..]);
+
+
+                            let replaced = {
+                                let body = &lambda[body_from..body_to];
+                                let argument = &lambda[body_to..argument_to];
+                                replace(body, var, argument, string_table)
+                            };
+
+                            lambda.drain(last_application..);
+                            lambda.extend(replaced);
+                            lambda.append(&mut suffix);
+
+                            size_applicands(lambda);
+
+                            break;
+                        },
+                        _ => { //application
+                            last_application_size = applicand_size;
+                            last_application = next_ind;
+                            applicand_size = (lambda[last_application] & CLEAR_APPLICATION_FLAG) as usize;
+
+                            next_ind += 1;
+
+                        }
+                    }
+                }
+            }
+        }
+        //1. find first non-application (will be an applicand)
+        //2. apply applicand to its argument, put back
+    }
+}
+
 pub fn replace_strs(lambda: &[u32], var: &str, expression: &str, string_table: &mut Vec<String>) -> Vec<u32> {
     let expression = parse_str(expression, string_table);
     replace_str(lambda, var, &expression, string_table)
@@ -351,6 +464,56 @@ pub fn replace_strs(lambda: &[u32], var: &str, expression: &str, string_table: &
 pub fn replace_str(lambda: &[u32], var: &str, expression: &[u32], string_table: &mut Vec<String>) -> Vec<u32> {
     let var = lookup_string(String::from(var), string_table);
     replace(lambda, var, expression, string_table)
+}
+
+fn size_applicands(lambda: &mut [u32]) {
+    for i in 0..lambda.len() {
+        let next = lambda[i];
+        match next & MATCH_FLAG {
+            0 => {},
+            ABSTRACTION_FLAG => {},
+            _ => {
+                let from = i + 1;
+                let to = lambda_to(lambda, from);
+                let size = to - from;
+                lambda[i] = size as u32 | APPLICATION_FLAG;
+            }
+        }
+    }
+}
+
+fn lambda_to(lambda: &[u32], start: usize) -> usize {
+    enum T {
+        Applicand,
+        Argument,
+        Body
+    }
+    let mut vec: Vec<T> = Vec::new();
+    let mut index = start;
+    loop {
+        let next = lambda[index];
+        index += 1;
+        match next & MATCH_FLAG {
+            0 => { //variable
+                loop {
+                    if let Some(b) = vec.pop() {
+                        if let T::Applicand = b {
+                            vec.push(T::Argument);
+                            break;
+                        }
+                    } else {
+                        return index;
+                    }
+                }
+            },
+            ABSTRACTION_FLAG => { //abstraction
+                vec.push(T::Body);
+            },
+            _ => { //application
+                vec.push(T::Applicand);
+            }
+        }
+    }
 }
 
 pub fn replace(lambda: &[u32], var: u32, expression: &[u32], string_table: &mut Vec<String>) -> Vec<u32> {
@@ -386,6 +549,7 @@ pub fn replace(lambda: &[u32], var: u32, expression: &[u32], string_table: &mut 
                         } else {
                             output.push(next);
                         }
+                        size_applicands(&mut output);
                         return output;
                     }
                 }
@@ -583,7 +747,7 @@ pub fn to_simplified_string<'a, S: fmt::Display, F: Fn(u32) -> S, I: IntoIterato
     };
 
     loop {
-        let next = *iter.next().expect("iterator ended too soon");
+        let next = *iter.next().expect(&format!("iterator ended too soon; stopped with {}", string));
         let tok = vec.pop().expect("uh oh");
 
         match next & MATCH_FLAG {
@@ -620,7 +784,6 @@ pub fn to_simplified_string<'a, S: fmt::Display, F: Fn(u32) -> S, I: IntoIterato
                     },
                     Tok::AbsAsApplicand => {
                         string.push_str(")");
-                        vec.push(tok);
                         vec.push(Tok::FinishedApplicand);
                     },
                     Tok::AppAsBody | Tok::AppAsApplicand | Tok::AppAsArgument => {
@@ -641,7 +804,7 @@ pub fn to_simplified_string<'a, S: fmt::Display, F: Fn(u32) -> S, I: IntoIterato
                         vec.push(Tok::AbsAsApplicand);
                     },
                     Tok::AppAsArgument => {
-                        string.push_str(&format!("λ{}.", string_table(next & CLEAR_FLAGS)));
+                        string.push_str(&format!("(λ{}.", string_table(next & CLEAR_FLAGS)));
                         vec.push(tok);
                         vec.push(Tok::AbsAsApplicand);
                     },
