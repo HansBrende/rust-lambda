@@ -7,7 +7,7 @@ mod tests {
 
 use std::fmt;
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum Token {
     OpenParen,
     CloseParen,
@@ -135,7 +135,14 @@ pub fn string_to_tokens<I: IntoIterator<Item=char>>(s: I, names: &mut Vec<String
                             continue 'outer
                         },
                         '\\' => panic!("backslash not allowed here!"),
-                        '.' => panic!("dot not allowed here!"),
+                        '.' => {
+                            if string.len() == 0 {
+                                panic!("variable names cannot be empty")
+                            } else {
+                                tokens.push(Token::Abs(lookup_string(string, names)));
+                                continue 'outer
+                            }
+                        },
                         '∀' => panic!("variables that contain forall symbols must contain no more than one character"),
                         _ => string.push(next)
                     }
