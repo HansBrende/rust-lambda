@@ -351,6 +351,8 @@ fn replace_var_unsafe(lambda: &mut [u32], start: usize, var: u32, replacement: u
 }
 
 pub fn beta_reduce(lambda: &mut Vec<u32>, string_table: &mut Vec<String>, verbose: bool) {
+    let mut count = 0;
+    let mut max_memory = 0;
     'outer: loop {
         for i in 0..lambda.len() {
             let next = lambda[i];
@@ -385,12 +387,17 @@ pub fn beta_reduce(lambda: &mut Vec<u32>, string_table: &mut Vec<String>, verbos
                         lambda.append(&mut suffix);
 
                         size_applicands(lambda);
+                        count += 1;
+                        if lambda.len() > max_memory {
+                            max_memory = lambda.len();
+                        }
                         continue 'outer;
                     }
                 }
             }
         }
-
+        println!("required {} beta-reductions", count);
+        println!("max memory used for the result of a single beta-reduction step: {} bytes", max_memory * 4);
         return;
     }
 }
@@ -785,6 +792,22 @@ pub fn to_simplified_string<'a, S: fmt::Display, F: Fn(u32) -> S, I: IntoIterato
                                     Tok::FinishedApplicand => panic!("weird")
                                 }
                             } else {
+                                // string = string.replace("λf.(λx.f (x x)) (λx.f (x x))", "Y");
+                                // string = string.replace("(Y)", "Y");
+                                // string = string.replace("λn.λf.λx.f (n f x)", "S");
+                                // string = string.replace("(S)", "S");
+                                // string = string.replace("λf.λx.x", "0");
+                                // string = string.replace("(0)", "0");
+                                // string = string.replace("λT.λF.F", "false");
+                                // string = string.replace("(false)", "false");
+                                // string = string.replace("λT.λF.T", "true");
+                                // string = string.replace("(true)", "true");
+                                // string = string.replace("λn.n (λx.false) true", "is_zero");
+                                // string = string.replace("(is_zero)", "is_zero");
+                                // string = string.replace("λn.n (λg.λk.is_zero (g (S 0)) k ((λn.λm.n S m) (g k) (S 0))) (λv.0) 0", "P");
+                                // string = string.replace("(P)", "P");
+                                // string = string.replace("λr.λn.is_zero n 0 (S (r r (P n)))", "G");
+                                // string = string.replace("(G)", "G");
                                 return string;
                             }
                         }
@@ -958,8 +981,8 @@ pub fn run(program: &str) {
     println!("{}", to_simplified_string(&program, |i| &string_table[i as usize]));
 
     println!("\n\nbeta-reducing program...\n");
-    println!("beta-reduced program output: ");
     beta_reduce(&mut program, &mut string_table, false);
+    println!("beta-reduced program output:\n");
 
     println!("{}\n\n", to_simplified_string(&program, |i| &string_table[i as usize]));
 }
@@ -974,7 +997,7 @@ pub fn run_verbose(program: &str) {
     println!("{}", to_simplified_string(&program, |i| &string_table[i as usize]));
 
     println!("\n\nbeta-reducing program...\n");
-    println!("beta-reduction steps: ");
+    println!("beta-reduction steps:\n");
     beta_reduce(&mut program, &mut string_table, true);
 
     println!("{}\n\n", to_simplified_string(&program, |i| &string_table[i as usize]));
