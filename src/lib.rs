@@ -350,7 +350,7 @@ fn replace_var_unsafe(lambda: &mut [u32], start: usize, var: u32, replacement: u
     }
 }
 
-pub fn beta_reduce2(lambda: &mut Vec<u32>, string_table: &mut Vec<String>) {
+pub fn beta_reduce(lambda: &mut Vec<u32>, string_table: &mut Vec<String>, verbose: bool) {
     'outer: loop {
         for i in 0..lambda.len() {
             let next = lambda[i];
@@ -361,7 +361,7 @@ pub fn beta_reduce2(lambda: &mut Vec<u32>, string_table: &mut Vec<String>) {
                     let abs_from = i + 1;
                     let param = lambda[abs_from];
                     if (param & MATCH_FLAG) == ABSTRACTION_FLAG {
-                        {
+                        if verbose {
                             let string_table_copy = string_table.clone();
                             println!("{}", to_simplified_string(lambda.iter(), |i| &string_table_copy[i as usize]));
                         }
@@ -395,73 +395,73 @@ pub fn beta_reduce2(lambda: &mut Vec<u32>, string_table: &mut Vec<String>) {
     }
 }
 
-pub fn beta_reduce(lambda: &mut Vec<u32>, string_table: &mut Vec<String>) {
-    loop {
-        match lambda[0] & MATCH_FLAG {
-            0 => { //variable
-                return
-            },
-            ABSTRACTION_FLAG => {
-                return
-            },
-            _ => { //application
-                let mut last_application_size = lambda.len();
-                let mut last_application: usize = 0;
-                let mut applicand_size = (lambda[last_application] & CLEAR_APPLICATION_FLAG) as usize;
+// pub fn beta_reduce(lambda: &mut Vec<u32>, string_table: &mut Vec<String>) {
+//     loop {
+//         match lambda[0] & MATCH_FLAG {
+//             0 => { //variable
+//                 return
+//             },
+//             ABSTRACTION_FLAG => {
+//                 return
+//             },
+//             _ => { //application
+//                 let mut last_application_size = lambda.len();
+//                 let mut last_application: usize = 0;
+//                 let mut applicand_size = (lambda[last_application] & CLEAR_APPLICATION_FLAG) as usize;
 
-                let mut next_ind = last_application + 1;
+//                 let mut next_ind = last_application + 1;
 
-                loop {
-                    {
-                        let string_table_copy = string_table.clone();
-                        println!("{}", to_simplified_string(lambda.iter(), |i| &string_table_copy[i as usize]));
-                    }
-                    let next = lambda[next_ind];
-                    match next & MATCH_FLAG {
-                        0 => {
-                            return
-                        },
-                        ABSTRACTION_FLAG => {
-                            let body_from = next_ind + 1;
-                            let body_to = next_ind + applicand_size;
-                            let argument_to = last_application + last_application_size;
+//                 loop {
+//                     {
+//                         let string_table_copy = string_table.clone();
+//                         println!("{}", to_simplified_string(lambda.iter(), |i| &string_table_copy[i as usize]));
+//                     }
+//                     let next = lambda[next_ind];
+//                     match next & MATCH_FLAG {
+//                         0 => {
+//                             return
+//                         },
+//                         ABSTRACTION_FLAG => {
+//                             let body_from = next_ind + 1;
+//                             let body_to = next_ind + applicand_size;
+//                             let argument_to = last_application + last_application_size;
                             
-                            let var = lambda[next_ind] & CLEAR_FLAGS;
+//                             let var = lambda[next_ind] & CLEAR_FLAGS;
 
                             
-                            let mut suffix = Vec::from(&lambda[argument_to..]);
+//                             let mut suffix = Vec::from(&lambda[argument_to..]);
 
 
-                            let replaced = {
-                                let body = &lambda[body_from..body_to];
-                                let argument = &lambda[body_to..argument_to];
-                                replace(body, var, argument, string_table)
-                            };
+//                             let replaced = {
+//                                 let body = &lambda[body_from..body_to];
+//                                 let argument = &lambda[body_to..argument_to];
+//                                 replace(body, var, argument, string_table)
+//                             };
 
-                            lambda.drain(last_application..);
-                            lambda.extend(replaced);
-                            lambda.append(&mut suffix);
+//                             lambda.drain(last_application..);
+//                             lambda.extend(replaced);
+//                             lambda.append(&mut suffix);
 
-                            size_applicands(lambda);
+//                             size_applicands(lambda);
 
-                            break;
-                        },
-                        _ => { //application
-                            last_application_size = applicand_size;
-                            last_application = next_ind;
-                            applicand_size = (lambda[last_application] & CLEAR_APPLICATION_FLAG) as usize;
+//                             break;
+//                         },
+//                         _ => { //application
+//                             last_application_size = applicand_size;
+//                             last_application = next_ind;
+//                             applicand_size = (lambda[last_application] & CLEAR_APPLICATION_FLAG) as usize;
 
-                            next_ind += 1;
+//                             next_ind += 1;
 
-                        }
-                    }
-                }
-            }
-        }
-        //1. find first non-application (will be an applicand)
-        //2. apply applicand to its argument, put back
-    }
-}
+//                         }
+//                     }
+//                 }
+//             }
+//         }
+//         //1. find first non-application (will be an applicand)
+//         //2. apply applicand to its argument, put back
+//     }
+// }
 
 pub fn replace_strs(lambda: &[u32], var: &str, expression: &str, string_table: &mut Vec<String>) -> Vec<u32> {
     let expression = parse_str(expression, string_table);
@@ -948,13 +948,36 @@ pub fn print_info(lambda: &str) {
     println!("");
 }
 
-fn run(program: &str) {
+pub fn run(program: &str) {
     let mut string_table: Vec<String> = Vec::new();
 
+    println!("\n\nparsing program...\n");
+    println!("simplified program string: ");
     let mut program = parse_str(program, &mut string_table);
-    beta_reduce2(&mut program, &mut string_table);
 
     println!("{}", to_simplified_string(&program, |i| &string_table[i as usize]));
+
+    println!("\n\nbeta-reducing program...\n");
+    println!("beta-reduced program output: ");
+    beta_reduce(&mut program, &mut string_table, false);
+
+    println!("{}\n\n", to_simplified_string(&program, |i| &string_table[i as usize]));
+}
+
+pub fn run_verbose(program: &str) {
+    let mut string_table: Vec<String> = Vec::new();
+
+    println!("\n\nparsing program...\n");
+    println!("simplified program string: ");
+    let mut program = parse_str(program, &mut string_table);
+
+    println!("{}", to_simplified_string(&program, |i| &string_table[i as usize]));
+
+    println!("\n\nbeta-reducing program...\n");
+    println!("beta-reduction steps: ");
+    beta_reduce(&mut program, &mut string_table, true);
+
+    println!("{}\n\n", to_simplified_string(&program, |i| &string_table[i as usize]));
 }
 
 
